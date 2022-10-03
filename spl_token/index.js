@@ -1,39 +1,44 @@
 import { clusterApiUrl, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmTransaction, Transaction } from "@solana/web3.js";
 import { createMint, createRevokeInstruction, getOrCreateAssociatedTokenAccount, mintTo, transfer } from "@solana/spl-token";
 import { createCreateMetadataAccountV2Instruction, PROGRAM_ID } from "@metaplex-foundation/mpl-token-metadata";
+import * as fs from "fs";
 import * as anchor from '@project-serum/anchor';
 
+function readWalletKey (privateKey) {
+    //const fs = require("fs");
+    const loaded = Keypair.fromSecretKey(new Uint8Array(JSON.parse(fs.readFileSync(privateKey).toString())));
+    return loaded;
+  }
 
 (async () => {
-    // Step 1: Connect to cluster and generate two new Keypairs
-    const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-    const fromWallet = Keypair.generate();
-    // Generate public key
-    const toWallet = new PublicKey("5vjYTJQ5kGnHzVMnWGSieiLzBXznMsaaYFp65oHArMYa");
-    
-    // Step 2: Airdrop SOL into your from wallet
-    const fromAirdropSignature = await connection.requestAirdrop(fromWallet.publicKey, LAMPORTS_PER_SOL);
+    // Connect to cluster and generate two new Keypairs
+    const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+    // Read private key from local config .id file and generate keypair
+    const myKeyPair = readWalletKey('/Users/gotousubaru/.config/solana/id.json', 'utf8');
+
+    // Airdrop SOL into your from wallet for rent
+    const fromAirdropSignature = await connection.requestAirdrop(myKeyPair.publicKey, LAMPORTS_PER_SOL);
     // Wait for airdrop confirmation
     await connection.confirmTransaction(fromAirdropSignature, { commitment: "confirmed" });
 
     
-    // Step 3: Create new token mint and get the token account of the fromWallet address
+    // Create new token mint and get the token account
     //If the token account does not exist, create it, connection /payer/mint auth,freeze, decimal
-    const mint = await createMint(connection, fromWallet, fromWallet.publicKey, null, 9);
-    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+    const mint = await createMint(connection, myKeyPair, myKeyPair.publicKey, null, 9);
+    const myTokenAccount = await getOrCreateAssociatedTokenAccount(
         connection,
-        fromWallet, //payer
+        myKeyPair, //payer
         mint, // mint account
-        fromWallet.publicKey // owner
+        myKeyPair.publicKey // owner
 )
     //Step 4: Mint a new token to the from account
     let signature = await mintTo(
         connection,
-        fromWallet, // payer
+        myKeyPair, // payer
         mint, // mint account
-        fromTokenAccount.address, // who we are minting to
-        fromWallet.publicKey, //authority
+        myTokenAccount.address, // who we are minting to
+        myKeyPair.publicKey, //authority
         4000000000, // amount
         []
     );
@@ -49,9 +54,9 @@ import * as anchor from '@project-serum/anchor';
     const accounts = {
         metadata: metadataPDA,
         mint: mint,
-        mintAuthority: fromWallet.publicKey,
-        payer: fromWallet,
-        updateAuthority:fromWallet.publicKey
+        mintAuthority: myKeyPair.publicKey,
+        payer: myKeyPair.publicKey,
+        updateAuthority:myKeyPair.publicKey
         }
     
     const dataV2 = {
@@ -76,24 +81,7 @@ import * as anchor from '@project-serum/anchor';
     // Make a transaction with metadata
     const tx = new Transaction();
     tx.add(ix);
-    const transactionId = sendAndConfirmTransaction(connection, tx, [fromWallet]);
+    const transactionId = sendAndConfirmTransaction(connection, tx, [myKeyPair]);
     console.log("transactionId", transactionId);
-    /*
 
-    //Step 6: Get the token account of the to-wallet address and if it does not exist, create it
-    const toTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromWallet, mint, toWallet);
-
-    //Step 7: Transfer the new token to the to-wallet's token account that was just created
-    // Transfer the new token to the "toTokenAccount" we just created
-    signature = await transfer(
-        connection,
-        fromWallet,//payer
-        fromTokenAccount.address, //from token account wallet
-        toTokenAccount.address, // to token account wallet
-        fromWallet.publicKey, // signature
-        1000000000, // amount
-        []
-        );
-    console.log('transfer tx:', signature);
-*/
 })();
